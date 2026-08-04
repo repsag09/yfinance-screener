@@ -1,0 +1,44 @@
+name: Scheduled Trade (Mon-Fri 9:30 AM ET)
+
+on:
+  schedule:
+    # Two cron entries attempt to cover both EST and EDT (DST) offsets.
+    # Mar-Nov (approx. EDT, UTC-4): 13:30 UTC -> 9:30 AM ET
+    - cron: '30 13 * 3-11 1-5'
+    # Nov-Mar (approx. EST, UTC-5): 14:30 UTC -> 9:30 AM ET
+    - cron: '30 14 * 11,12,1,2 1-5'
+  workflow_dispatch: {}
+
+jobs:
+  run-trade:
+    runs-on: ubuntu-latest
+    env:
+      APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+      APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+      APCA_API_BASE_URL: https://paper-api.alpaca.markets
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r stock-screener/requirements.txt
+
+      - name: Run screener (if available)
+        # Attempt to run the existing screener to produce stock-screener/stocks_scan.csv
+        run: |
+          if [ -f stock-screener/screener.py ]; then
+            python stock-screener/screener.py || true
+          else
+            echo "No screener.py found; ensure stocks_scan.csv exists in repository or adjust workflow"
+          fi
+
+      - name: Run trade script (paper)
+        run: |
+          python stock-screener/trade.py --scan stock-screener/stocks_scan.csv --no-dry-run --capital 5000 --position-pct 0.10
